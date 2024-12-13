@@ -38,6 +38,5 @@ I'm a passionate **Data Scientist** with a knack for solving complex problems, d
 
 ## 📫 Let's Connect!
 - [LinkedIn](https://www.linkedin.com/in/shlomtzion-hazan/)
-- [Email](shlomtz.ev@gamil.com)
 
 Check out my projects and feel free to reach out! 😊
