@@ -20,9 +20,12 @@ load_dotenv()
 
 # Retrieve variables from the environment
 API_KEY = os.getenv("OPENAI_API_KEY")
+if not API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is not set")
+
 SEARX_HOST = os.getenv("SEARX_HOST")
-SEARX_ENGINES = os.getenv("SEARX_ENGINES").split(",")
-MODEL = os.getenv("OPENAI_MODEL")
+SEARX_ENGINES = os.getenv("SEARX_ENGINES")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # Provide a default model if not set
 SMTP_SERVER = os.getenv('SMTP_SERVER')
 SMTP_PORT = os.getenv('SMTP_PORT')
 SMTP_USERNAME = os.getenv('SMTP_USERNAME')
