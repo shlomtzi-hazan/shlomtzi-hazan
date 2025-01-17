@@ -30,6 +30,7 @@ To address security issues in the FastAPI application related to file upload and
 - Introduce an **admin profile** to manage users and groups:
   - Add new users to groups or remove them as needed.
   - Maintain a secure record of groups and their members.
+  - Admins have access to all files in the system and can modify file access control settings as needed.
 
 ---
 
