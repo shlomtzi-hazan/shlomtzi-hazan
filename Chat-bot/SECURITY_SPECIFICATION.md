@@ -17,14 +17,14 @@ To address security issues in the FastAPI application related to file upload and
 ## **Proposed Solution**
 
 ### **User Authentication and Identification**
-- Implement a user identification stage requiring a **username** and **password**.
+- Implement a user identification stage requiring a **userID**.
 - Ensure only authenticated users can interact with the `/upload` endpoint or access files.
 
 ### **File Access Control**
 - Allow file uploaders to specify access permissions:
-  - **Private**: Only the uploader can access the file.
   - **Group**: Accessible by users within a specified group.
-  - **Public**: Accessible by all users.
+  - **Private**: A group that includes only one userID (for user 17 it will be 10017).
+  - **Public**: A group that includes all userIDs.
 
 ### **Admin Management**
 - Introduce an **admin profile** to manage users and groups:
@@ -36,9 +36,8 @@ To address security issues in the FastAPI application related to file upload and
 
 ## **Data Structure**
 Maintain a table or dictionary containing user details:
-- **`username`**: The user’s unique identifier.
-- **`password`**: The user’s login credentials.
-- **`groups`**: Comma-separated list of groups the user belongs to.
+- **`userID`**: The user’s unique identifier.
+- **`groups`**: Comma-separated list of groups the user belongs to. All users will belong to to at least two groups: their private group and the public group.
 - **`is_admin`**: Flag indicating whether the user has administrative privileges.
 
 ---
@@ -48,44 +47,10 @@ Maintain a table or dictionary containing user details:
 ### **Authentication and Identification**
 
 #### **Existing Users**
-1. Prompt for a **username**.
-2. Check if the username exists:
-   - If the username exists:
-     - Prompt for a **password**.
-     - Verify the password against stored credentials.
-     - If valid, grant access to the app.
-
-#### **New Users**
-1. If the username does not exist, offer the option to **register a new account**.
-2. Registration process:
-   - Prompt the user to create a **username** and **password**.
-   - Ask if the user belongs to any group(s).
-   - If the user selects a group, send a request to the **Admin** for approval.
-   - Inform the user that their request is pending admin approval.
-   - Save the user’s details in the system with the `is_admin` flag set to `False`.
-3. Allow the new user to log in and upload files, but restrict access to group-related files until admin approval is granted.
-
----
-
-### **Example Pseudo-Code for New Users**
-
-```python
-users = {}  # Dictionary to store user data
-
-def register_user(username, password, group=None):
-    if username in users:
-        return "Username already exists."
-    users[username] = {
-        "password": password,
-        "groups": [group] if group else [],
-        "is_admin": False
-    }
-    if group:
-        send_admin_approval_request(username, group)
-        return "Account created. Group access request sent to admin."
-    return "Account created. No group specified."
-```
-
+1. Prompt for a **userID**.
+2. Check if the userID exists:
+   - If the userID exists:
+    - grant access to the app.
 ---
 
 ## **Admin Approval Workflow**
@@ -99,9 +64,9 @@ def register_user(username, password, group=None):
 
 ### **Authenticated Upload**
 1. Prompt the uploader to select file access permissions:
-   - **Private**
-   - **Group-based** (specify group name)
-   - **Public**
+   - **Private** (group 10000 + userID)
+   - **Group-based** (specify group)
+   - **Public** (group 10000)
 2. Store metadata about file ownership and permissions.
 
 ### **File Access**
@@ -113,12 +78,22 @@ def register_user(username, password, group=None):
 
 ```python
 def can_access_file(user, file_metadata):
-    if file_metadata['access'] == 'public':
+    # Check if the user is in the allowed group for the file
+    group_id = file_metadata['group']  # Group ID is numeric
+    
+    if group_id == 10000:
+        # Public group - anyone can access
         return True
-    if file_metadata['access'] == 'private' and file_metadata['owner'] == user:
+    
+    elif group_id == 10000 + user.id:
+        # Private group - only the specific user can access
         return True
-    if file_metadata['access'] == 'group' and user in file_metadata['groups']:
+    
+    elif group_id in user.groups:
+        # Group-based - check if the user belongs to the group
         return True
+    
+    # Deny access if none of the conditions match
     return False
 ```
 
@@ -135,9 +110,8 @@ Admin users can:
 ## **System Workflow**
 
 ### **When a User Logs In**
-1. Prompt for a username:
-   - If the user exists:
-     - Ask for a password.
+1. Prompt for a userID:
+   - If the userID exists:
      - Grant access to their files or relevant functionalities.
    - If the user doesn’t exist:
      - Prompt to create a new user.
