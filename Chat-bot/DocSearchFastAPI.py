@@ -3,15 +3,25 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Hea
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv, find_dotenv
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
+from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_community.vectorstores.utils import filter_complex_metadata
+from langchain_text_splitters import CharacterTextSplitter
 import shutil
 import uvicorn
 import logging
 import chardet
+import markitdown
+# Debug line to see available contents
+print("Available markitdown contents:", dir(markitdown))
+# Try to import from _markitdown submodule
+from markitdown._markitdown import MarkItDown
+import tempfile
+import hashlib
 
 # Load environment variables from .env file
 dotenv_path = find_dotenv()
@@ -67,6 +77,29 @@ similarity_prompt = PromptTemplate(
     template="Use the following documents to answer the question: {docs}\nQuestion: {input}\nAnswer:"
 )
 
+# Convert files to markdown format 
+def convert_to_markdown(file_path: str) -> str:
+    logging.info(f"Converting file to markdown: {file_path}")
+    markitdown = MarkItDown()
+    """Convert document to markdown format"""
+    try:
+        result = markitdown.convert(file_path)
+        logging.info("Conversion to markdown successful")
+        markdown_content = result.text_content
+
+        # Generate markdown stamp
+        markdown_stamp = generate_markdown_stamp(markdown_content)
+        logging.info(f"Generated markdown stamp: {markdown_stamp}")
+
+        return markdown_content, markdown_stamp
+    except Exception as e:
+        logging.error(f"Error converting document to markdown: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def generate_markdown_stamp(content: str) -> str:
+    """Generate a unique stamp for the markdown content"""
+    return hashlib.sha256(content.encode('utf-8')).hexdigest()
+
 # Initialize the LLM
 llm = ChatOpenAI(api_key=API_KEY, model=MODEL)
 llm_chain = LLMChain(llm=llm, prompt=similarity_prompt)
@@ -86,35 +119,73 @@ def get_user_groups(user_id: int):
 
 @app.get("/")
 def read_root():
+    logging.info("Endpoint '/' called")
     return {"message": "Welcome to my app!"}
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), user_id: int = Depends(get_current_user), group_id: int = Form(...)):
     if group_id not in get_user_groups(user_id):
         raise HTTPException(status_code=403, detail="You do not have permission to upload to this group")
+    
+    logging.info(f"Uploading file: {file.filename}")
 
     try:
         file_location = f"uploaded_files/{file.filename}"
+        with open(file_location, "wb") as f:
+            shutil.copyfileobj(file.file, f)    
         logging.info(f"Saving file to {file_location}")
 
-        # Save the uploaded file
-        with open(file_location, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        content, markdown_stamp = convert_to_markdown(file_location)
+        logging.info(f"Content of the file: {content}")
 
-        # Detect file encoding
-        with open(file_location, "rb") as f:
-            raw_data = f.read()
-            detected_encoding = chardet.detect(raw_data)["encoding"]
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            # Write the in-memory data to the temporary file
+            temp_file.write(content)
+            # Get the path of the temporary file
+            temp_file_path = temp_file.name
+            logging.info(f"Temporary file path: {temp_file_path}")
 
-        # Read file with detected encoding
-        encoding_to_use = detected_encoding if detected_encoding else "utf-8"
-        with open(file_location, "r", encoding=encoding_to_use) as f:
-            content = f.read()
-            try:
-                vectorstore.add_texts([content], [{"filename": file.filename, "group_id": group_id}])
-            except Exception as e:
-                logging.error(f"Error adding texts to vectorstore: {e}")
-                return JSONResponse(content={"error": f"Error adding texts to vectorstore: {e}"}, status_code=500)
+
+        loader = UnstructuredMarkdownLoader(temp_file_path)
+        document=loader.load()
+        logging.info(f"Content of the file: {content}")
+
+        # Clean up: remove the temporary file after processing
+        os.remove(temp_file_path)
+
+        #split the  document into sentences
+        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+        texts = text_splitter.split_documents(document)
+
+        # Embed metadata into each document
+
+        # convert the groups to string in JSON format
+        #groupstr = json.dumps(groups)
+        logging.info(f"Access control groups: {group_id}")
+        metadata = {
+            "access_control_groups": group_id,
+            "author": "John Doe",
+            "timestamp": "2023-10-01T12:00:00Z",
+            "filename": file_location,
+            "markdown_stamp": markdown_stamp  # Add markdown stamp to metadata
+        }
+        for doc in texts:
+            doc.metadata.update(metadata)
+        
+        # Filter complex metadata
+        texts = filter_complex_metadata(texts)
+
+        try:
+            logging.info("Using Chroma vector store")
+            #vectorstore.add_texts([content], metadata)
+            vectorstore.add_documents(texts)  # Removed metadata argument
+
+        except Exception as e:
+            logging.error(f"Error adding texts to vectorstore: {e}")
+            return JSONResponse(
+                content={"error": f"Error adding texts to vectorstore: {e}"}, 
+                status_code=500
+            )
 
         return JSONResponse(content={"message": "File uploaded successfully"}, status_code=200)
     except Exception as e:
@@ -124,19 +195,41 @@ async def upload_file(file: UploadFile = File(...), user_id: int = Depends(get_c
 @app.post("/search")
 async def search_docs(query: str = Form(...), user_id: int = Depends(get_current_user)):
     user_groups = get_user_groups(user_id)
+    logging.info(f"Searching documents with query: '{query}' using groups: {user_groups}")
     try:
-        # Perform similarity search in Chroma vectorstore
-        docs = vectorstore.similarity_search(query)
-        # Filter docs by user groups
-        docs = [doc for doc in docs if doc.metadata.get("group_id") in user_groups]
-        if not docs:
+        # Retrieve all documents
+        # Retrieve all documents using the current Chroma API
+        chroma_results = vectorstore.get()
+        documents = chroma_results['documents']
+        metadatas = chroma_results['metadatas']
+
+        # Filter documents by user groups
+        filtered_pairs = []
+        for doc, metadata in zip(documents, metadatas):
+            if metadata and "access_control_groups" in metadata:
+                if any(g == metadata["access_control_groups"] for g in user_groups):
+                    filtered_pairs.append({
+                        "page_content": doc,
+                        "metadata": metadata
+                    })
+        # Remove duplicates based on markdown stamp
+        unique_docs = {}
+        for doc in filtered_pairs:
+            stamp = doc["metadata"].get("markdown_stamp")
+            if stamp and stamp not in unique_docs:
+                unique_docs[stamp] = doc
+
+        unique_docs_list = list(unique_docs.values())
+
+        if not unique_docs_list:
+            logging.info("No relevant documents found")
             return JSONResponse(content={"message": "No relevant documents found"}, status_code=404)
-        
-        # Convert documents to JSON-serializable format
-        docs_json = [{"content": doc.page_content, "metadata": doc.metadata} for doc in docs]
-        
-        # Generate response using LLM
+
+        # Perform similarity search on filtered documents
+        docs = vectorstore.similarity_search(query, k=4)
+        docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in docs]
         response = llm_chain.invoke({"input": query, "docs": docs_json})
+        logging.info("Search successful, returning response")
         return JSONResponse(content={"response": response}, status_code=200)
     except Exception as e:
         logging.error(f"Error searching docs: {e}")
@@ -144,4 +237,5 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
