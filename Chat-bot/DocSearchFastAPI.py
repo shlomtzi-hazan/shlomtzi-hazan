@@ -194,43 +194,26 @@ async def upload_file(file: UploadFile = File(...), user_id: int = Depends(get_c
 
 @app.post("/search")
 async def search_docs(query: str = Form(...), user_id: int = Depends(get_current_user)):
+    # Get user groups
     user_groups = get_user_groups(user_id)
     logging.info(f"Searching documents with query: '{query}' using groups: {user_groups}")
     try:
-        # Retrieve all documents
-        # Retrieve all documents using the current Chroma API
-        chroma_results = vectorstore.get()
-        documents = chroma_results['documents']
-        metadatas = chroma_results['metadatas']
-
-        # Filter documents by user groups
-        filtered_pairs = []
-        for doc, metadata in zip(documents, metadatas):
-            if metadata and "access_control_groups" in metadata:
-                if any(g == metadata["access_control_groups"] for g in user_groups):
-                    filtered_pairs.append({
-                        "page_content": doc,
-                        "metadata": metadata
-                    })
-        # Remove duplicates based on markdown stamp
+        # Perform similarity search on filtered documents based on user groups
         unique_docs = {}
-        for doc in filtered_pairs:
-            stamp = doc["metadata"].get("markdown_stamp")
-            if stamp and stamp not in unique_docs:
-                unique_docs[stamp] = doc
-
-        unique_docs_list = list(unique_docs.values())
-
-        if not unique_docs_list:
-            logging.info("No relevant documents found")
-            return JSONResponse(content={"message": "No relevant documents found"}, status_code=404)
-
-        # Perform similarity search on filtered documents
-        docs = vectorstore.similarity_search(query, k=4)
-        docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in docs]
+        for group in user_groups:
+            docs = vectorstore.similarity_search(query, filter={"access_control_groups": group}, k=15)
+            # Find unique documents based on markdown_stamp
+            for doc in docs:
+                stamp = doc.metadata.get("markdown_stamp")
+                if stamp and stamp not in unique_docs:
+                    unique_docs[stamp] = doc
+        # Convert to JSON serializable format
+        docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in unique_docs]
+        # Run the LLM chain
         response = llm_chain.invoke({"input": query, "docs": docs_json})
         logging.info("Search successful, returning response")
         return JSONResponse(content={"response": response}, status_code=200)
+    
     except Exception as e:
         logging.error(f"Error searching docs: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
@@ -238,4 +221,3 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
