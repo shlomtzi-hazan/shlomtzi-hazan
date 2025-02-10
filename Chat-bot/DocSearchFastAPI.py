@@ -15,11 +15,7 @@ import shutil
 import uvicorn
 import logging
 import chardet
-import markitdown
-# Debug line to see available contents
-print("Available markitdown contents:", dir(markitdown))
-# Try to import from _markitdown submodule
-from markitdown._markitdown import MarkItDown
+from markitdown import MarkItDown
 import tempfile
 import hashlib
 
@@ -160,7 +156,6 @@ async def upload_file(file: UploadFile = File(...), user_id: int = Depends(get_c
         # Embed metadata into each document
 
         # convert the groups to string in JSON format
-        #groupstr = json.dumps(groups)
         logging.info(f"Access control groups: {group_id}")
         metadata = {
             "access_control_groups": group_id,
@@ -201,14 +196,17 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
         # Perform similarity search on filtered documents based on user groups
         unique_docs = {}
         for group in user_groups:
-            docs = vectorstore.similarity_search(query, filter={"access_control_groups": group}, k=15)
+            # Limit the number of documents to 20 per search
+            docs = vectorstore.similarity_search(query, filter={"access_control_groups": group}, k=20)
+            # logging.info(f"Found these docs: '{docs}'") # For debugging
             # Find unique documents based on markdown_stamp
             for doc in docs:
                 stamp = doc.metadata.get("markdown_stamp")
+                # logging.info(f"Found stamp: '{stamp}'") # For debugging
                 if stamp and stamp not in unique_docs:
                     unique_docs[stamp] = doc
         # Convert to JSON serializable format
-        docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in unique_docs]
+        docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in unique_docs.values()]
         # Run the LLM chain
         response = llm_chain.invoke({"input": query, "docs": docs_json})
         logging.info("Search successful, returning response")
