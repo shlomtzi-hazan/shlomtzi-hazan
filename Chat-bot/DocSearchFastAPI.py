@@ -194,19 +194,20 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
     logging.info(f"Searching documents with query: '{query}' using groups: {user_groups}")
     try:
         # Perform similarity search on filtered documents based on user groups
+        docs = vectorstore.similarity_search(query, filter={"access_control_groups": {"$in": list(user_groups)}}, k=20)
+        logging.info(f"Found these docs: '{docs}'")
+        
+        # Find unique documents based on markdown_stamp
         unique_docs = {}
-        for group in user_groups:
-            # Limit the number of documents to 20 per search
-            docs = vectorstore.similarity_search(query, filter={"access_control_groups": group}, k=20)
-            # logging.info(f"Found these docs: '{docs}'") # For debugging
-            # Find unique documents based on markdown_stamp
-            for doc in docs:
-                stamp = doc.metadata.get("markdown_stamp")
-                # logging.info(f"Found stamp: '{stamp}'") # For debugging
-                if stamp and stamp not in unique_docs:
-                    unique_docs[stamp] = doc
+        for doc in docs:
+            stamp = doc.metadata.get("markdown_stamp")
+            logging.info(f"Found stamp: '{stamp}'")
+            if stamp and stamp not in unique_docs:
+                unique_docs[stamp] = doc
+        
         # Convert to JSON serializable format
         docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in unique_docs.values()]
+        
         # Run the LLM chain
         response = llm_chain.invoke({"input": query, "docs": docs_json})
         logging.info("Search successful, returning response")
@@ -215,7 +216,7 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
     except Exception as e:
         logging.error(f"Error searching docs: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
-
+        
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="0.0.0.0", port=8000)
