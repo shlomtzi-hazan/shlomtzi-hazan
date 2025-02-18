@@ -18,6 +18,8 @@ import chardet
 from markitdown import MarkItDown
 import tempfile
 import hashlib
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
 
 # Load environment variables from .env file
 dotenv_path = find_dotenv()
@@ -67,10 +69,23 @@ os.makedirs("uploaded_files", exist_ok=True)
 embeddings = OpenAIEmbeddings(api_key=API_KEY)
 vectorstore = Chroma(embedding_function=embeddings, persist_directory="chroma_db")
 
-# Define a prompt template for similarity search
+# Initialize Wikipedia tool
+wikipedia_wrapper = WikipediaAPIWrapper(top_k_results=3, doc_content_chars_max=500)
+wikipedia_tool = WikipediaQueryRun(api_wrapper=wikipedia_wrapper)
+
+# Update the similarity prompt to include Wikipedia results
 similarity_prompt = PromptTemplate(
-    input_variables=["input", "docs"],
-    template="Use the following documents to answer the question: {docs}\nQuestion: {input}\nAnswer:"
+    input_variables=["input", "docs", "wiki_results"],
+    template="""Use the following information to answer the question:
+
+Documents from our database:
+{docs}
+
+Wikipedia information:
+{wiki_results}
+
+Question: {input}
+Answer:"""
 )
 
 # Convert files to markdown format 
@@ -197,6 +212,14 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
         docs = vectorstore.similarity_search(query, filter={"access_control_groups": {"$in": list(user_groups)}}, k=20)
         logging.info(f"Found these docs: '{docs}'")
         
+        # Get Wikipedia results
+        try:
+            wiki_results = wikipedia_tool.invoke({"query": query})
+            logging.info(f"Wikipedia results found: {wiki_results}")
+        except Exception as wiki_error:
+            logging.warning(f"Wikipedia search failed: {wiki_error}")
+            wiki_results = "No Wikipedia results available."
+
         # Find unique documents based on markdown_stamp
         unique_docs = {}
         for doc in docs:
@@ -208,15 +231,23 @@ async def search_docs(query: str = Form(...), user_id: int = Depends(get_current
         # Convert to JSON serializable format
         docs_json = [{"content": d.page_content, "metadata": d.metadata} for d in unique_docs.values()]
         
-        # Run the LLM chain
-        response = llm_chain.invoke({"input": query, "docs": docs_json})
+        # Run the LLM chain with both document and Wikipedia results
+        response = llm_chain.invoke({
+            "input": query, 
+            "docs": docs_json,
+            "wiki_results": wiki_results
+        })
+        
         logging.info("Search successful, returning response")
-        return JSONResponse(content={"response": response}, status_code=200)
+        return JSONResponse(content={
+            "response": response,
+            "wiki_results": wiki_results
+        }, status_code=200)
     
     except Exception as e:
         logging.error(f"Error searching docs: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
-        
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="0.0.0.0", port=8000)
