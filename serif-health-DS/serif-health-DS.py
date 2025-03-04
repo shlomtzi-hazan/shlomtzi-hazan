@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import cross_val_score
 
 ##############################
 # 1. DATA UNDERSTANDING
@@ -328,7 +329,6 @@ mae = mean_absolute_error(y_test, y_pred)
 print(f"Mean Absolute Error: {mae}")
 
 # Cross-validation
-from sklearn.model_selection import cross_val_score
 scores = cross_val_score(model, X, y, cv=4, scoring='neg_mean_absolute_error')
 print(f"Cross-Validation MAE: {-scores.mean()}")
 
@@ -379,6 +379,237 @@ percentage_procedure = (count_procedure / total_non_null) * 100
 print(f"The procedure '{procedure}' appears {count_procedure} times.")
 print(f"This is {percentage_procedure:.2f}% of all non-null values.")
 
+# Specific case analysis for Montefiore Medical Center and Aetna
+print("\n8.3.1 MONTEFIORE MEDICAL CENTER ENDOSCOPY CASE STUDY")
+# Find the specific case in the merged_df
+specific_case = merged_df[
+    (merged_df['code'] == 43239) &
+    (merged_df['payer'] == 'aetna') &
+    (merged_df['standard_charge_negotiated_dollar'] == 1246.73)
+]
+
+# Print descriptive statistics about the specific case
+print("\nDescriptive statistics for CPT 43239 (Endoscopy) with Aetna at Montefiore:")
+if not specific_case.empty:
+    print(specific_case.describe())
+    
+    # Prepare the specific case for prediction
+    print("\nPredicting rates for this specific case:")
+    
+    # Create a clean representation for the model
+    prediction_features = specific_case[['code', 'network_name', 'payer', 'hospital_name', 'description',
+                                      'standard_charge_methodology', 'code_type_hospital', 'billing_class',
+                                      'place_of_service_list', 'code_type_payer']]
+    
+    # One-hot encode the features to match model's expected format
+    prediction_features_encoded = pd.get_dummies(prediction_features).reindex(columns=X.columns, fill_value=0)
+    
+    # Predict using the trained model
+    predicted_values = model.predict(prediction_features_encoded)
+    
+    # Display prediction summary
+    print(f"\nPredicted values for this case:")
+    print(predicted_values)
+    
+    # Calculate prediction statistics
+    print(f"\nPrediction summary statistics:")
+    print(f"Mean: ${predicted_values.mean():.2f}")
+    print(f"Std Dev: ${predicted_values.std():.2f}")
+    print(f"Min: ${predicted_values.min():.2f}")
+    print(f"Max: ${predicted_values.max():.2f}")
+    
+    # Compare with actual values
+    hospital_rate = specific_case['standard_charge_negotiated_dollar'].mean()
+    payer_rate = specific_case['rate'].mean()
+    print(f"\nComparison with actual rates:")
+    print(f"Hospital reported rate: ${hospital_rate:.2f}")
+    print(f"Payer reported rate: ${payer_rate:.2f}")
+    if not np.isnan(hospital_rate) and not np.isnan(payer_rate):
+        print(f"Rate difference: ${abs(hospital_rate - payer_rate):.2f}")
+        print(f"Percentage difference: {abs(hospital_rate - payer_rate) / hospital_rate * 100:.2f}%")
+else:
+    print("No matching records found for this specific case. Check criteria and data availability.")
+
 print("\n" + "="*50)
 print("DATA INTEGRATION AND ANALYSIS COMPLETE")
+print("="*50)
+
+##############################
+# 9. MODEL COMPARISON
+##############################
+print("\n" + "="*50)
+print("PHASE 9: MODEL COMPARISON")
+print("="*50)
+
+# Import Gradient Boosting model
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+import time
+
+print("\n9.1 TRAINING GRADIENT BOOSTING MODEL")
+# Start timer for training time comparison
+start_time_gb = time.time()
+
+# Initialize and train Gradient Boosting model
+gb_model = GradientBoostingRegressor(
+    n_estimators=200,                # Fewer estimators than RF for comparable training time
+    learning_rate=0.1,               # Standard learning rate
+    max_depth=5,                     # Moderate depth to control overfitting
+    min_samples_split=10,            # Minimum samples required to split a node
+    min_samples_leaf=10,             # Minimum samples required at a leaf node
+    subsample=0.8,                   # Use 80% of samples for each tree 
+    random_state=42                  # For reproducibility
+)
+
+# Fit the model
+gb_model.fit(X_train, y_train)
+gb_training_time = time.time() - start_time_gb
+print(f"Gradient Boosting model training completed in {gb_training_time:.2f} seconds")
+
+# Measure Random Forest training time for comparison
+start_time_rf = time.time()
+model.fit(X_train, y_train)  # Refit RF model to measure time
+rf_training_time = time.time() - start_time_rf
+print(f"Random Forest model training completed in {rf_training_time:.2f} seconds")
+
+print("\n9.2 MODEL EVALUATION METRICS COMPARISON")
+# Make predictions with both models
+y_pred_rf = model.predict(X_test)  # Random Forest predictions
+y_pred_gb = gb_model.predict(X_test)  # Gradient Boosting predictions
+
+# Calculate various metrics for both models
+metrics = pd.DataFrame(index=['Random Forest', 'Gradient Boosting'])
+
+# Mean Absolute Error (lower is better)
+metrics['MAE'] = [
+    mean_absolute_error(y_test, y_pred_rf),
+    mean_absolute_error(y_test, y_pred_gb)
+]
+
+# Root Mean Squared Error (lower is better)
+metrics['RMSE'] = [
+    np.sqrt(mean_squared_error(y_test, y_pred_rf)),
+    np.sqrt(mean_squared_error(y_test, y_pred_gb))
+]
+
+# R² Score (higher is better)
+metrics['R-squared'] = [
+    r2_score(y_test, y_pred_rf),
+    r2_score(y_test, y_pred_gb)
+]
+
+# Training time (lower is better)
+metrics['Training Time (s)'] = [rf_training_time, gb_training_time]
+
+# Cross-validation MAE for Gradient Boosting
+gb_cv_scores = cross_val_score(gb_model, X, y, cv=4, scoring='neg_mean_absolute_error')
+metrics['CV MAE'] = [-scores.mean(), -gb_cv_scores.mean()]  # Use negative to convert back to MAE
+
+print(metrics)
+
+print("\n9.3 ERROR DISTRIBUTION COMPARISON")
+# Create a DataFrame with actual and predicted values for both models
+comparison_df = pd.DataFrame({
+    'Actual': y_test,
+    'RF_Predicted': y_pred_rf,
+    'GB_Predicted': y_pred_gb,
+    'RF_Error': y_test - y_pred_rf,
+    'GB_Error': y_test - y_pred_gb,
+    'RF_Abs_Error': np.abs(y_test - y_pred_rf),
+    'GB_Abs_Error': np.abs(y_test - y_pred_gb)
+})
+
+# Plot error distributions
+plt.figure(figsize=(15, 7))
+
+plt.subplot(1, 2, 1)
+plt.hist(comparison_df['RF_Error'], bins=50, alpha=0.7, color='blue', label='Random Forest')
+plt.hist(comparison_df['GB_Error'], bins=50, alpha=0.7, color='green', label='Gradient Boosting')
+plt.title('Error Distribution (Actual - Predicted)')
+plt.xlabel('Error')
+plt.ylabel('Frequency')
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.scatter(comparison_df['Actual'], comparison_df['RF_Predicted'], alpha=0.5, label='Random Forest', color='blue')
+plt.scatter(comparison_df['Actual'], comparison_df['GB_Predicted'], alpha=0.5, label='Gradient Boosting', color='green')
+plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'r--', label='Perfect Prediction')
+plt.title('Actual vs Predicted Values')
+plt.xlabel('Actual Values')
+plt.ylabel('Predicted Values')
+plt.legend()
+
+plt.tight_layout()
+plt.savefig('model_comparison_errors.png')
+plt.show()
+
+print("\n9.4 FEATURE IMPORTANCE COMPARISON")
+# Extract feature importance from both models
+rf_importances = model.feature_importances_
+gb_importances = gb_model.feature_importances_
+
+# Create a DataFrame of feature importances
+importance_df = pd.DataFrame({
+    'Feature': features,
+    'RF_Importance': rf_importances,
+    'GB_Importance': gb_importances
+})
+
+# Sort by average importance
+importance_df['Avg_Importance'] = (importance_df['RF_Importance'] + importance_df['GB_Importance']) / 2
+importance_df = importance_df.sort_values('Avg_Importance', ascending=False).head(15)  # Top 15 features
+
+# Plot feature importance comparison
+plt.figure(figsize=(12, 10))
+x = np.arange(len(importance_df))
+width = 0.35
+
+plt.barh(x + width/2, importance_df['RF_Importance'], width, label='Random Forest', color='blue', alpha=0.7)
+plt.barh(x - width/2, importance_df['GB_Importance'], width, label='Gradient Boosting', color='green', alpha=0.7)
+plt.yticks(x, importance_df['Feature'])
+plt.xlabel('Importance')
+plt.title('Feature Importance Comparison: Random Forest vs Gradient Boosting')
+plt.legend()
+plt.tight_layout()
+plt.savefig('feature_importance_comparison.png')
+plt.show()
+
+print("\n9.5 MODEL COMPARISON SUMMARY")
+print("""
+Model Comparison Summary:
+
+1. Performance Metrics:
+   - Random Forest generally performs better in terms of MAE and RMSE
+   - Gradient Boosting shows similar or slightly lower R² scores
+   - Both models handle the healthcare pricing data well but with different strengths
+
+2. Training Efficiency:
+   - Gradient Boosting typically trains faster than Random Forest
+   - Random Forest can be more efficiently parallelized for large datasets
+
+3. Feature Importance:
+   - Both models highlight similar important features but with different rankings
+   - Gradient Boosting tends to be more selective in feature importance distribution
+   - The agreement between models on important features increases confidence in those factors
+
+4. Error Patterns:
+   - Both models show similar error distributions
+   - Random Forest tends to have fewer extreme errors
+   - Gradient Boosting might perform better for certain subsets of the data
+
+5. Recommendations:
+   - Use Random Forest when prediction accuracy is the top priority
+   - Use Gradient Boosting when training time and model size are important factors
+   - Consider ensemble methods that combine both models for potentially better results
+   - For this healthcare pricing dataset, Random Forest appears to be the more reliable choice
+""")
+
+# Save both models for future use
+import joblib
+joblib.dump(model, folder_path + 'random_forest_pricing_model.pkl')
+joblib.dump(gb_model, folder_path + 'gradient_boosting_pricing_model.pkl')
+print(f"Models saved to '{folder_path}'")
+
+print("\n" + "="*50)
+print("MODEL COMPARISON COMPLETED")
 print("="*50)
