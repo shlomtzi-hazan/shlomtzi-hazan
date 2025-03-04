@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import ast
+import numpy as np
 
 # File paths
 folder_path = "/Users/shlomtzi/PycharmProjects/" # Change to your actual folder path
@@ -80,13 +81,21 @@ df_hospital['raw_code'] = df_hospital['raw_code'].str.extract('(\d+)').astype(fl
 df_payer['code'] = df_payer['code'].astype(float).astype('Int64')
 
 # Merge the data samples into a single, unified schema using 'code', 'payer' (payer), 'raw_code', 'payer_name' (hospital), and 'ein' columns
-merged_df = pd.merge(df_payer, df_hospital, left_on=['code', 'payer', 'ein'], right_on=['raw_code', 'payer_name', 'ein'], how='left', suffixes=('_payer', '_hospital'))
-# Save the merged dataframe to a CSV file
-merged_df.to_csv(folder_path + 'merged_dataset.csv', index=False)
+merged_df = pd.merge(df_payer, df_hospital, left_on=['code', 'payer', 'ein'], right_on=['raw_code', 'payer_name', 'ein'], how='outer', suffixes=('_payer', '_hospital'))
+
 print("Merged dataset saved to 'merged_dataset.csv'")
 print("Merged dataset shape:", merged_df.shape)
 print("Merged dataset columns:", merged_df.columns)
 print("Merged dataset sample:")
+# Calculate the absolute difference between 'rangre' and 'standard_charge_negotiated_dollar' columns
+# and store it in a new column 'delta'
+merged_df['delta'] = np.where(merged_df[['rate', 'standard_charge_negotiated_dollar']].notnull().all(axis=1),
+                              (merged_df['rate'] - merged_df['standard_charge_negotiated_dollar']).abs(), np.nan)
+merged_df['delta_perc'] = np.where(merged_df[['rate', 'standard_charge_negotiated_dollar']].notnull().all(axis=1),
+                                   (merged_df['delta'] / merged_df['standard_charge_negotiated_dollar']).abs() * 100, np.nan)
+# Explanation:
+# The 'delta' column represents the absolute difference between the 'rate' and 'standard_charge_negotiated_dollar' columns.
+# This can help identify discrepancies or variations between the expected range and the negotiated dollar amount.
 print(merged_df.head())
 
 # Identify inconsistencies or discrepancies in the combined data
@@ -111,6 +120,14 @@ print(merged_df.dtypes)
 print("Merged dataset description:")
 print(merged_df.describe())
 
+# Check how often the number 1246.73 is used in the 'standard_charge_negotiated_dollar' column
+count_1246_73 = merged_df['description'].eq('UPPER GI ENDOSCOPY BIOPSY').sum()
+total_non_null = merged_df['description'].notnull().sum()
+percentage_1246_73 = (count_1246_73 / total_non_null) * 100
+print(f"The number 1246.73 appears {count_1246_73} times in the 'standard_charge_negotiated_dollar' column.")
+print(f"This is {percentage_1246_73:.2f}% of all non-null values in this column.")
+print(f"The number 1246.73 appears {count_1246_73} times in the 'standard_charge_negotiated_dollar' column.")
+
 # Select only numeric columns for correlation matrix
 numeric_cols = merged_df.select_dtypes(include=[float, int]).columns
 print("Numeric columns for correlation matrix:", numeric_cols)
@@ -124,7 +141,45 @@ plt.savefig('merged_missing_values.png')
 
 # Visualize correlations in the merged dataset
 plt.figure(figsize=(15, 10))
-sns.heatmap(merged_df[numeric_cols].corr(), annot=True, cmap='coolwarm', fmt='.2f')
+# Fill NaN values with 0 for correlation matrix
+corr_matrix = merged_df[numeric_cols].fillna(0).corr()
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f')
 plt.title('Correlation Matrix of Merged Dataset')
 plt.savefig('merged_correlation_matrix.png')
-# plt.show()
+#plt.show()
+
+# Define threshold using standard deviation method
+delta_threshold = merged_df['delta'].mean() + 2 * merged_df['delta'].std()
+delta_perc_threshold = merged_df['delta_perc'].mean() + 2 * merged_df['delta_perc'].std()
+
+# Alternatively, use percentile approach
+delta_threshold = np.percentile(merged_df['delta'].dropna(), 95)
+delta_perc_threshold = np.percentile(merged_df['delta_perc'].dropna(), 95)
+
+# Flagging rows with significant differences
+merged_df['flagged'] = merged_df[['delta', 'delta_perc']].notnull().all(axis=1) & (
+    (merged_df['delta'] > delta_threshold) | (merged_df['delta_perc'] > delta_perc_threshold)
+)
+
+print(merged_df[merged_df['flagged']].isnull().sum())
+
+# Print flagged rows
+print("Significant discrepancies found:")
+print(merged_df[merged_df['flagged']])
+
+# Define severity levels for analysis
+merged_df['discrepancy_level'] = pd.cut(
+    merged_df['delta'], 
+    bins=[0, 1000, 5000, 10000, np.inf], 
+    labels=['Low (0-1K)', 'Moderate (1K-5K)', 'High (5K-10K)', 'Severe (>10K)']
+)
+
+# Count flagged rows per category
+print(merged_df[merged_df['flagged']]['discrepancy_level'].value_counts())
+
+# Non-flagged rows: Use for analysis/modeling
+# Flagged rows: Investigate, categorize, and either correct or exclude
+
+
+# Save the merged dataframe to a CSV file
+merged_df.to_csv(folder_path + 'merged_dataset.csv', index=False)
