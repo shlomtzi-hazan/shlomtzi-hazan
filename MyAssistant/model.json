@@ -1,0 +1,45 @@
+{
+  "company_name": "Oakie Technologies",
+  "tech_stack": [
+    "Python 3.9+",
+    "Django 4.x",
+    "React 18",
+    "PostgreSQL 14",
+    "Docker",
+    "AWS"
+  ],
+  "coding_conventions": {
+    "python": {
+      "style_guide": "PEP 8",
+      "line_length": 88,
+      "indentation": "4 spaces",
+      "naming": {
+        "classes": "PascalCase",
+        "functions": "snake_case",
+        "variables": "snake_case",
+        "constants": "UPPER_SNAKE_CASE"
+      },
+      "documentation": "Google style docstrings"
+    },
+    "javascript": {
+      "style_guide": "Airbnb",
+      "indentation": "2 spaces",
+      "naming": {
+        "classes": "PascalCase",
+        "functions": "camelCase",
+        "variables": "camelCase",
+        "constants": "UPPER_SNAKE_CASE"
+      }
+    }
+  },
+  "best_practices": [
+    "Write unit tests for all new features",
+    "Follow TDD when appropriate",
+    "Document all public APIs",
+    "Keep functions short and focused on a single responsibility",
+    "Use type hints in Python code",
+    "Perform code reviews for all changes",
+    "Containerize applications using Docker",
+    "Use CI/CD for automated testing and deployment"
+  ]
+}
