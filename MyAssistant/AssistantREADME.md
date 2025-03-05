@@ -1,4 +1,3 @@
-
 # Oakie Technologies AI Assistant
 
 A specialized AI assistant designed to help developers follow Oakie Technologies' coding guidelines and best practices.
@@ -15,7 +14,11 @@ This AI assistant leverages the OpenAI API to provide developers with guidance o
 
 - Custom-tailored responses based on Oakie Technologies' guidelines
 - Support for Python and JavaScript coding conventions
+- Document context integration for informed responses
+- Reference previous messages using mentions
 - Conversation memory with ability to reset
+- Support for PDF document analysis
+- Command-line interface with interactive and non-interactive modes
 - Logging of conversations for future reference
 
 ## Setup
@@ -47,10 +50,7 @@ This AI assistant leverages the OpenAI API to provide developers with guidance o
 
 ## Usage
 
-When running the application:
-- Type your questions or code snippets for review
-- Type 'reset' to start a new conversation
-- Type 'exit' to quit the application
+### Interactive Mode
 
-## Example Interactions
+Run the application with no arguments to enter interactive mode:
 
