@@ -35,7 +35,7 @@ else:
 
 
 class OakieAssistant:
-    def __init__(self, model_path: str = 'Chat-bot/model.json', prompt_template_path: str = 'Chat-bot/prompt.jinja2'):
+    def __init__(self, model_path: str = 'MyAssistant/model.json', prompt_template_path: str = 'MyAssistant/prompt.jinja2'):
         """Initialize the Oakie AI assistant.
         
         Args:
