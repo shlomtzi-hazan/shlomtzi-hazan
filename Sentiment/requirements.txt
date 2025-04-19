@@ -1,0 +1,7 @@
+streamlit
+snscrape
+pandas
+plotly
+vaderSentiment
+googlenews
+python-dotenv
