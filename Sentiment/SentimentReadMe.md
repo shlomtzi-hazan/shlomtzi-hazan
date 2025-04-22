@@ -18,8 +18,6 @@ Use a modular approach:
 |--------------|----------------|---------------------------|
 | Reddit       | Public posts  | Reddit API (via PRAW)     |
 | Google News  | Headlines     | Google News API / SERP API or BeautifulSoup |
-| Reuters      | Headlines     | NewsAPI or scraping       |
-| Bloomberg    | Headlines     | NewsAPI or scraping       |
 
 ### 2. **Sentiment Analysis**
 - Use **VADER** (for simplicity) or **transformer-based models** (e.g., `distilbert-base-uncased-finetuned-sst-2-english`) for Reddit posts.
