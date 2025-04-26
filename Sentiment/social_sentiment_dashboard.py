@@ -26,12 +26,12 @@ st.markdown(
 
         html, body, [class*="css"] {
             font-family: 'Orbitron', sans-serif;
-            background-color: #1f1f1f;
-            color: #787777; /* Default dark gray */
+            background-color: #121212; /* Darker true black background */
+            color: #e0e0e0; /* Light gray text */
         }
 
         .stApp {
-            background-color: #1e4675;
+            background-color: #121212;
         }
 
         h1, h2, h3, h4, h5, h6 {
@@ -44,52 +44,66 @@ st.markdown(
             padding: 2rem 1rem;
         }
 
-        .stMarkdown {
-            color: #787777 !important;
+        .stMarkdown, .stDataFrame {
+            color: #e0e0e0 !important;
         }
 
         label, .stTextInput label {
-            color: #d0d0d0 !important;
+            color: #b0b0b0 !important;
+        }
+
+        .stTextInput>div>input {
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            border-radius: 5px;
         }
 
         .stButton>button {
-            background-color: #ffffff;
-            color: #333333 !important;
+            background-color: #00f0ff;
+            color: #121212 !important;
             font-weight: bold;
-            border: 1px solid #aaa;
+            border: none;
             border-radius: 8px;
             padding: 0.5rem 1rem;
+            transition: background-color 0.3s;
         }
 
         .stButton>button:hover {
-            background-color: #f0f0f0;
-            color: #111111 !important;
+            background-color: #00c5d7;
+            color: #121212 !important;
         }
 
         .stAlert-success, .stAlert-success span {
-            background-color: rgba(0, 255, 100, 0.1);
+            background-color: rgba(0, 255, 100, 0.15);
             border-left: 5px solid #00ff88;
             color: #dfffe2 !important;
         }
 
         .stAlert-info, .stAlert-info span {
-            background-color: #f5f5f5 !important;
-            border-left: 5px solid #d3d3d3;
-            color: #333333 !important;
+            background-color: rgba(0, 240, 255, 0.15);
+            border-left: 5px solid #00f0ff;
+            color: #e0e0e0 !important;
         }
 
-        .css-1offfwp, .css-1y4p8pa {
+        .css-1offfwp, .css-1y4p8pa, .stDataFrame {
             background-color: rgba(255, 255, 255, 0.05);
             border-radius: 12px;
             padding: 1rem;
             margin-bottom: 1rem;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
         }
 
         .stPlotlyChart {
             background-color: rgba(255, 255, 255, 0.03);
             border-radius: 10px;
             padding: 1rem;
+        }
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #1c1c1c;
+            color: #e0e0e0;
         }
     </style>
     """,
