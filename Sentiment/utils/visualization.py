@@ -1,8 +1,9 @@
 # utils/visualization.py
 import pandas as pd
 import plotly.express as px
+from datetime import datetime, timedelta
 
-def plot_sentiment_over_time(df):
+def plot_sentiment_over_time(df, days_back):
     """
     Plot sentiment over time for multiple companies with debugging information.
 
@@ -19,6 +20,11 @@ def plot_sentiment_over_time(df):
     # Ensure the 'date' column is in datetime format
     df['date'] = pd.to_datetime(df['date'])
 
+    # Filter data for the last 'days_back' days
+    if days_back:
+        cutoff_date = pd.to_datetime('today') - pd.Timedelta(days=days_back)
+        df = df[df['date'] >= cutoff_date]
+
     # Group data by date and company, and calculate the mean sentiment
     df_grouped = df.groupby(['date', 'company'])['sentiment'].mean().reset_index()
 
@@ -29,8 +35,12 @@ def plot_sentiment_over_time(df):
     return fig
 
 def plot_sentiment_comparison(df):
-    latest = df[df['date'] == df['date'].max()]
+    df['date'] = pd.to_datetime(df['date'])
+    last_24_hours = datetime.now() - timedelta(hours=24)
+    latest = df[df['date'] >= last_24_hours]
+    print(latest.head())  # Debugging: print the latest data
     avg_sentiment = latest.groupby('company')['sentiment'].mean().reset_index()
+    avg_sentiment['sentiment'] = avg_sentiment['sentiment'].round(3)
     fig = px.bar(avg_sentiment, x='company', y='sentiment', color='company',
                  title='Sentiment Comparison (Last 24h)', text='sentiment')
     return fig
