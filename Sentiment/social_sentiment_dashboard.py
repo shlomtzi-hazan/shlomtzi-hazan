@@ -6,14 +6,19 @@ from sentiment_analysis import analyze_sentiment
 from utils.visualization import plot_sentiment_over_time, plot_sentiment_comparison
 from dotenv import load_dotenv
 import os
+import openai
+from datetime import datetime, timedelta
+from utils.post_generator import generate_post
 
-# Set up the app's configuration and title (must be the first Streamlit command)
+# Set up the app's configuration and title
 st.set_page_config(page_title="Brand Sentiment Dashboard", layout="wide")
 
 # Load environment variables
 load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Apply custom CSS for a professional look
+
+# Apply custom CSS for the new color palette
 st.markdown(
     """
     <style>
@@ -22,16 +27,16 @@ st.markdown(
         html, body, [class*="css"] {
             font-family: 'Orbitron', sans-serif;
             background-color: #1f1f1f;
-            color: #a6a4a4;
+            color: #787777; /* Default dark gray */
         }
 
         .stApp {
-            background-color: #0e1f33;
+            background-color: #1e4675;
         }
 
         h1, h2, h3, h4, h5, h6 {
             font-family: 'Orbitron', sans-serif;
-            color: #00f0ff;  /* Neon cyan */
+            color: #00f0ff;
             text-shadow: 0 0 5px #00f0ff, 0 0 10px #00f0ff;
         }
 
@@ -39,8 +44,38 @@ st.markdown(
             padding: 2rem 1rem;
         }
 
-        .stMarkdown, p, span, div {
-            color: #e0e0e0 !important;
+        .stMarkdown {
+            color: #787777 !important;
+        }
+
+        label, .stTextInput label {
+            color: #d0d0d0 !important;
+        }
+
+        .stButton>button {
+            background-color: #ffffff;
+            color: #333333 !important;
+            font-weight: bold;
+            border: 1px solid #aaa;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+        }
+
+        .stButton>button:hover {
+            background-color: #f0f0f0;
+            color: #111111 !important;
+        }
+
+        .stAlert-success, .stAlert-success span {
+            background-color: rgba(0, 255, 100, 0.1);
+            border-left: 5px solid #00ff88;
+            color: #dfffe2 !important;
+        }
+
+        .stAlert-info, .stAlert-info span {
+            background-color: #f5f5f5 !important;
+            border-left: 5px solid #d3d3d3;
+            color: #333333 !important;
         }
 
         .css-1offfwp, .css-1y4p8pa {
@@ -61,53 +96,78 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Sidebar controls
+st.sidebar.title("Control Panel")
+st.sidebar.subheader("Add Company")
+new_company = st.sidebar.text_input("Enter a company name")
+if st.sidebar.button("Add"):
+    if new_company:
+        if "companies" not in st.session_state:
+            st.session_state.companies = []
+        if new_company not in st.session_state.companies:
+            st.session_state.companies.append(new_company)
+            st.sidebar.success(f"Added {new_company}")
+        else:
+            st.sidebar.warning(f"{new_company} already added")
 
-# Title of the dashboard
-st.title("Brand Sentiment Dashboard")
+# Time frame filter
+st.sidebar.subheader("Select Time Frame")
+days_back = st.sidebar.slider("Days to look back", min_value=1, max_value=30, value=7)
+start_date = datetime.now() - timedelta(days=days_back)
 
-# Initialize session state for companies
-if "companies" not in st.session_state:
-    st.session_state.companies = []
+# Main title
+st.title("📊 Brand Sentiment Dashboard")
 
-# Input field to add a company
-st.subheader("Add a Company")
-new_company = st.text_input("Enter a company name to analyze:")
-if st.button("Add Company"):
-    if new_company and new_company not in st.session_state.companies:
-        st.session_state.companies.append(new_company)
-        st.success(f"Added {new_company} to the list!")
-    elif new_company in st.session_state.companies:
-        st.warning(f"{new_company} is already in the list!")
-    else:
-        st.error("Please enter a valid company name.")
+if "companies" in st.session_state and st.session_state.companies:
+    st.markdown(f"### Monitoring: {', '.join(st.session_state.companies)}")
 
-# Display the current list of companies
-st.subheader("Companies to Monitor")
-if st.session_state.companies:
-    st.write(", ".join(st.session_state.companies))
-else:
-    st.write("No companies added yet. Please add a company to start.")
+    with st.spinner("Collecting posts..."):
+        tweet_df = get_company_tweets(st.session_state.companies, days=days_back)
 
-# Scrape tweets if there are companies in the list
-if st.session_state.companies:
-    st.subheader("Tweet Sentiment Analysis")
-    st.write("Analyzing tweets for the following companies: ", ", ".join(st.session_state.companies))
-    tweet_df = get_company_tweets(st.session_state.companies)
-
-    # Analyze sentiment
     tweet_sentiment_df = analyze_sentiment(tweet_df)
 
-    # Plot 1: Sentiment Over Time
-    st.subheader("Sentiment Over Time")
-    st.plotly_chart(plot_sentiment_over_time(tweet_sentiment_df), use_container_width=True)
+    col1, col2 = st.columns(2)
 
-    # Plot 2: Comparison Bar Chart
-    st.subheader("Brand Sentiment Comparison")
-    st.plotly_chart(plot_sentiment_comparison(tweet_sentiment_df), use_container_width=True)
+    with col1:
+        st.subheader("📈 Sentiment Over Time")
+        st.plotly_chart(plot_sentiment_over_time(tweet_sentiment_df), use_container_width=True)
 
-    # News Event Impact
-    st.subheader("News Events (Last 24 Hours)")
+    with col2:
+        st.subheader("🏷️ Brand Sentiment Comparison")
+        st.plotly_chart(plot_sentiment_comparison(tweet_sentiment_df), use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("📰 News Events (Last 24 Hours)")
     news_df = get_recent_news(st.session_state.companies)
     st.dataframe(news_df[['title', 'source', 'published', 'company', 'url']])
+
+    st.markdown("---")
+    st.subheader("📝 Generated Posts")
+
+    if not news_df.empty:
+        for _, row in news_df.iterrows():
+            company = row['company']
+            news_title = row['title']
+            news_summary = f"{row['source']} published an article titled '{news_title}' on {row['published']}."
+            sentiment = tweet_sentiment_df[tweet_sentiment_df['company'] == company]['sentiment'].mean()
+
+            # Determine sentiment label
+            if sentiment > 0.05:
+                sentiment_label = "positive"
+            elif sentiment < -0.05:
+                sentiment_label = "negative"
+            else:
+                sentiment_label = "neutral"
+
+            # Generate the post
+            generated_post = generate_post(company, sentiment_label, news_title, news_summary)
+
+            # Display the generated post
+            st.markdown(f"**{company}:**")
+            st.write(generated_post)
+            st.markdown("---")
+    else:
+        st.info("No news articles available to generate posts.")
+
 else:
-    st.info("Please add at least one company to analyze.")
+    st.info("Add a company in the sidebar to get started.")
