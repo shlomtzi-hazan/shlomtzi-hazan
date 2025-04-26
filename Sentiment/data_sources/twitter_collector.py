@@ -45,8 +45,13 @@ def get_company_tweets(companies, days=7, max_posts_per_company=500):
     pd.DataFrame
         DataFrame containing fetched posts with columns: date, content, company.
     """
+    
     all_posts = []
-    time_filter = "week" if days <= 7 else "month"  # Use Reddit's time filters
+    time_filter = "month"  # Use Reddit's time filters
+    # Calculate the exact cutoff date for post-filtering
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    
+    print(f"Searching for posts from the last {days} days (since {cutoff_date})")
 
     for company in companies:
         try:
